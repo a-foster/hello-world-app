@@ -1,0 +1,195 @@
+name: Deploy to AWS Lambda
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - '.github/workflows/deploy.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY_NAME }}
+  LAMBDA_FUNCTION_NAME: ${{ vars.LAMBDA_FUNCTION_NAME }}
+
+jobs:
+  deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_GITHUB_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build Docker image
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+          # Push to ECR
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+          # Output image URI for later steps
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Update Lambda function
+        env:
+          IMAGE_URI: ${{ steps.build-image.outputs.image }}
+        run: |
+          echo "Updating Lambda function: $LAMBDA_FUNCTION_NAME"
+          echo "New image: $IMAGE_URI"
+
+          aws lambda update-function-code \
+            --function-name $LAMBDA_FUNCTION_NAME \
+            --image-uri $IMAGE_URI \
+            --region $AWS_REGION
+
+          # Wait for update to complete
+          echo "Waiting for Lambda function update to complete..."
+          aws lambda wait function-updated \
+            --function-name $LAMBDA_FUNCTION_NAME \
+            --region $AWS_REGION
+
+          echo "Lambda function updated successfully!"
+
+      - name: Get Lambda function info
+        id: lambda-info
+        run: |
+          # Get function configuration
+          FUNCTION_INFO=$(aws lambda get-function \
+            --function-name $LAMBDA_FUNCTION_NAME \
+            --region $AWS_REGION)
+
+          # Extract and display relevant information
+          echo "Function ARN: $(echo $FUNCTION_INFO | jq -r '.Configuration.FunctionArn')"
+          echo "Runtime: $(echo $FUNCTION_INFO | jq -r '.Configuration.PackageType')"
+          echo "Memory: $(echo $FUNCTION_INFO | jq -r '.Configuration.MemorySize') MB"
+          echo "Timeout: $(echo $FUNCTION_INFO | jq -r '.Configuration.Timeout') seconds"
+          echo "Last Modified: $(echo $FUNCTION_INFO | jq -r '.Configuration.LastModified')"
+
+      - name: Smoke Test - Health Check
+        id: health-check
+        run: |
+          # Wait a bit for Lambda to be fully ready
+          sleep 5
+
+          # Get API Gateway endpoint from variables
+          API_ENDPOINT="${{ vars.API_GATEWAY_ENDPOINT }}"
+
+          if [ -z "$API_ENDPOINT" ]; then
+            echo "⚠️ API_GATEWAY_ENDPOINT not configured, skipping smoke test"
+            exit 0
+          fi
+
+          echo "Testing health endpoint: $API_ENDPOINT/health"
+
+          # Test health endpoint
+          RESPONSE=$(curl -s -w "\n%{http_code}" "$API_ENDPOINT/health")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          echo "Response code: $HTTP_CODE"
+          echo "Response body: $BODY"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Health check failed with status code: $HTTP_CODE"
+            exit 1
+          fi
+
+          # Validate response contains expected fields
+          STATUS=$(echo "$BODY" | jq -r '.status')
+          if [ "$STATUS" != "healthy" ]; then
+            echo "❌ Health check returned unexpected status: $STATUS"
+            exit 1
+          fi
+
+          echo "✅ Health check passed!"
+
+      - name: Smoke Test - Hello Endpoint
+        id: hello-test
+        run: |
+          API_ENDPOINT="${{ vars.API_GATEWAY_ENDPOINT }}"
+
+          if [ -z "$API_ENDPOINT" ]; then
+            echo "⚠️ API_GATEWAY_ENDPOINT not configured, skipping smoke test"
+            exit 0
+          fi
+
+          echo "Testing hello endpoint: $API_ENDPOINT/hello"
+
+          # Test hello endpoint
+          RESPONSE=$(curl -s -w "\n%{http_code}" "$API_ENDPOINT/hello")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          echo "Response code: $HTTP_CODE"
+          echo "Response body: $BODY"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Hello endpoint test failed with status code: $HTTP_CODE"
+            exit 1
+          fi
+
+          # Validate response contains expected fields
+          MESSAGE=$(echo "$BODY" | jq -r '.message')
+          if [[ ! "$MESSAGE" =~ "Hello" ]]; then
+            echo "❌ Hello endpoint returned unexpected message: $MESSAGE"
+            exit 1
+          fi
+
+          echo "✅ Hello endpoint test passed!"
+
+          # Test with name parameter
+          echo "Testing hello endpoint with name parameter"
+          RESPONSE=$(curl -s -w "\n%{http_code}" "$API_ENDPOINT/hello?name=Sano")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          echo "Response: $BODY"
+
+          MESSAGE=$(echo "$BODY" | jq -r '.message')
+          if [[ ! "$MESSAGE" =~ "Sano" ]]; then
+            echo "❌ Hello endpoint with name parameter failed"
+            exit 1
+          fi
+
+          echo "✅ Hello endpoint with name parameter passed!"
+
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Status:** Successful" >> $GITHUB_STEP_SUMMARY
+          echo "📦 **Image:** \`${{ steps.build-image.outputs.image }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "⚡ **Function:** \`$LAMBDA_FUNCTION_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "🌍 **Region:** \`$AWS_REGION\`" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Smoke Tests" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Health check passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Hello endpoint passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "View traces in [AWS X-Ray Console](https://console.aws.amazon.com/xray/home?region=$AWS_REGION#/service-map)" >> $GITHUB_STEP_SUMMARY
