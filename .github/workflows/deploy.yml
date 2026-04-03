@@ -155,7 +155,7 @@ jobs:
 
           # Validate response contains expected fields
           MESSAGE=$(echo "$BODY" | jq -r '.message')
-          if [[ ! "$MESSAGE" =~ "Hello" ]]; then
+          if [[ ! "$MESSAGE" =~ "HELLO" ]]; then
             echo "❌ Hello endpoint returned unexpected message: $MESSAGE"
             exit 1
           fi
@@ -171,7 +171,7 @@ jobs:
           echo "Response: $BODY"
 
           MESSAGE=$(echo "$BODY" | jq -r '.message')
-          if [[ ! "$MESSAGE" =~ "Sano" ]]; then
+          if [[ ! "$MESSAGE" =~ "SANO" ]]; then
             echo "❌ Hello endpoint with name parameter failed"
             exit 1
           fi
