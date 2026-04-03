@@ -123,6 +123,8 @@ class TestMainHandler:
     def test_handler_exception_handling(self):
         """Test handler catches and handles exceptions"""
         # Mock handle_hello to raise an exception to test error handling
+        from unittest.mock import patch
+
         event = {"path": "/hello", "httpMethod": "GET"}
         context = Mock(
             aws_request_id="test-request-id",
@@ -130,7 +132,7 @@ class TestMainHandler:
         )
 
         # Patch handle_hello to raise an exception
-        with pytest.mock.patch('src.app.handle_hello', side_effect=Exception("Test error")):
+        with patch('src.app.handle_hello', side_effect=Exception("Test error")):
             response = handler(event, context)
 
         assert response["statusCode"] == 500
