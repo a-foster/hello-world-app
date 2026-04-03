@@ -122,14 +122,16 @@ class TestMainHandler:
 
     def test_handler_exception_handling(self):
         """Test handler catches and handles exceptions"""
-        # Pass a malformed event that will cause an error during processing
+        # Mock handle_hello to raise an exception to test error handling
         event = {"path": "/hello", "httpMethod": "GET"}
         context = Mock(
             aws_request_id="test-request-id",
-            invoked_function_arn="invalid-arn"  # This will cause an error
+            invoked_function_arn="arn:aws:lambda:us-east-1:123456789012:function:test"
         )
 
-        response = handler(event, context)
+        # Patch handle_hello to raise an exception
+        with pytest.mock.patch('src.app.handle_hello', side_effect=Exception("Test error")):
+            response = handler(event, context)
 
         assert response["statusCode"] == 500
         body = json.loads(response["body"])
