@@ -6,10 +6,10 @@ using OpenTelemetry for distributed tracing and AWS X-Ray integration.
 """
 
 import json
-import os
 import logging
+import os
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any, Dict
 
 # OpenTelemetry imports
 from opentelemetry import trace
@@ -234,7 +234,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     span.set_attribute("request.id", request_id)
 
     logger.info(
-        f"Request received",
+        "Request received",
         extra={
             "request_id": request_id,
             "method": http_method,
