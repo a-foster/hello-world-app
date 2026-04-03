@@ -1,0 +1,14 @@
+# Development Dependencies
+
+# Linting and formatting
+ruff==0.1.9
+black==23.12.1
+
+# Type checking
+mypy==1.8.0
+types-requests
+
+# Testing
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-asyncio==0.21.1
