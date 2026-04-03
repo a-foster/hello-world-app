@@ -180,7 +180,7 @@ def handle_hello(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         greeting_span.set_attribute("greeting.recipient", name)
 
         # Simulate some business logic
-        greeting = f"Hello, {name}!"
+        greeting = f"HELLO, {name.upper()}!"
 
         greeting_span.set_attribute("greeting.message", greeting)
         greeting_span.add_event("Greeting generated", {"recipient": name, "length": len(greeting)})
