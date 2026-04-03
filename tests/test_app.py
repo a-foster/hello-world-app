@@ -122,10 +122,11 @@ class TestMainHandler:
 
     def test_handler_exception_handling(self):
         """Test handler catches and handles exceptions"""
-        event = None  # This should cause an error
+        # Pass a malformed event that will cause an error during processing
+        event = {"path": "/hello", "httpMethod": "GET"}
         context = Mock(
             aws_request_id="test-request-id",
-            invoked_function_arn="arn:aws:lambda:us-east-1:123456789012:function:test"
+            invoked_function_arn="invalid-arn"  # This will cause an error
         )
 
         response = handler(event, context)
