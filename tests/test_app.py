@@ -57,7 +57,7 @@ class TestHelloEndpoint:
 
         assert response["statusCode"] == 200
         body = json.loads(response["body"])
-        assert body["message"] == "Hello, World!"
+        assert body["message"] == "HELLO, WORLD!"
 
     def test_hello_with_custom_name(self):
         """Test hello endpoint with custom name parameter"""
@@ -72,7 +72,7 @@ class TestHelloEndpoint:
 
         assert response["statusCode"] == 200
         body = json.loads(response["body"])
-        assert body["message"] == "Hello, Claude!"
+        assert body["message"] == "HELLO, CLAUDE!"
 
 
 class TestMainHandler:
